@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>幸运九宫格抽奖 - 登录</title>
+    <script src="{{ url_for('static', filename='js/tailwindcss.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/font-awesome.min.css') }}">
+    
+    <!-- 配置Tailwind自定义颜色（飞书风格） -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#2563eb',
+                        secondary: '#3b82f6',
+                        accent: '#1e40af',
+                        neutral: '#f3f4f6',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-white rounded-2xl shadow-md overflow-hidden">
+        <div class="p-8">
+            <div class="text-center mb-8">
+                <h1 class="text-2xl font-bold text-gray-900 mb-2">幸运九宫格抽奖</h1>
+                <p class="text-gray-500">登录后即可参与抽奖</p>
+            </div>
+            
+            <div class="space-y-6">
+                <a href="/login" class="flex items-center justify-center px-4 py-3 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary/90 transition-colors w-full">
+                    <i class="fa fa-commenting-o mr-2"></i>
+                    使用飞书账号登录
+                </a>
+                
+                <div class="text-center text-sm text-gray-500">
+                    登录即表示同意我们的 <a href="#" class="text-primary hover:underline">用户协议</a> 和 <a href="#" class="text-primary hover:underline">隐私政策</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
