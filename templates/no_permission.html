@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>参与资格验证</title>
+    <script src="{{ url_for('static', filename='js/tailwindcss.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/font-awesome.min.css') }}">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#2563eb',
+                        secondary: '#3b82f6',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 min-h-screen py-12 px-4">
+    <div class="max-w-md mx-auto bg-white rounded-2xl shadow-md overflow-hidden">
+        <div class="p-8 text-center">
+            <div class="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <i class="fa fa-info-circle text-yellow-500 text-2xl"></i>
+            </div>
+            
+            <h2 class="text-xl font-bold text-gray-900 mb-3">参与资格验证</h2>
+            
+            <p class="text-gray-500 mb-8">
+                您当前未在订阅号点赞，请在点赞后返回即可参与抽奖（每人限抽1次）
+            </p>
+            
+            <div class="flex items-center justify-center mb-8">
+                <img src="{{ user.avatar_url }}" alt="{{ user.name }}的头像" class="w-12 h-12 rounded-full mr-3 object-cover">
+                <span class="font-medium">{{ user.name }}</span>
+            </div>
+            
+            <div class="space-y-4">
+                <button onclick="window.location.reload()" class="w-full flex items-center justify-center px-4 py-3 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary/90 transition-colors">
+                    <i class="fa fa-refresh mr-2"></i>
+                    已点赞，刷新页面
+                </button>
+                
+                <a href="/logout" class="w-full inline-flex items-center justify-center px-4 py-3 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors">
+                    <i class="fa fa-sign-out mr-2"></i>
+                    退出登录
+                </a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>幸运九宫格抽奖</title>
+    <script src="{{ url_for('static', filename='js/tailwindcss.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/font-awesome.min.css') }}">
+    
+    <!-- 配置Tailwind自定义颜色（飞书风格） -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#2563eb', // 飞书蓝作为主色调
+                        secondary: '#3b82f6',
+                        accent: '#1e40af',
+                        neutral: '#f3f4f6',
+                        'neutral-dark': '#e5e7eb',
+                        'text-primary': '#111827',
+                        'text-secondary': '#4b5563'
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .card-hover {
+                transition: all 0.2s ease;
+            }
+            .card-hover:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            }
+            .pulse-btn {
+                animation: pulse 2s infinite;
+            }
+            @keyframes pulse {
+                0% {
+                    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.3);
+                }
+                70% {
+                    box-shadow: 0 0 0 8px rgba(37, 99, 235, 0);
+                }
+                100% {
+                    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
+                }
+            }
+            .prize-active {
+                border-color: #2563eb;
+                background-color: rgba(37, 99, 235, 0.05);
+                box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+            }
+            .prize-actions {
+                opacity: 0;
+                transition: opacity 0.2s ease;
+            }
+            .prize-item:hover .prize-actions {
+                opacity: 1;
+            }
+            .prize-image-container {
+                position: relative;
+                width: 100%;
+                height: 100%;
+                overflow: hidden;
+                border-radius: inherit;
+            }
+            .prize-full-image {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                transition: transform 0.3s ease;
+            }
+            .prize-item:hover .prize-full-image {
+                transform: scale(1.05);
+            }
+            .prize-text-overlay {
+                position: absolute;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                padding: 4px 6px;
+                background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+                color: white;
+                font-weight: bold;
+                font-size: 12px;
+                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+            }
+            .prize-count-badge {
+                position: absolute;
+                top: 2px;
+                right: 2px;
+                background-color: rgba(255, 69, 0, 0.9);
+                color: white;
+                font-size: 10px;
+                padding: 1px 4px;
+                border-radius: 4px;
+                font-weight: bold;
+                z-index: 10;
+            }
+            .prize-exhausted {
+                background-color: rgba(156, 163, 175, 0.9);
+            }
+            .prize-disabled {
+                opacity: 0.7;
+                cursor: not-allowed;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans text-text-primary min-h-screen py-8">
+    <!-- 主内容区 -->
+    <main class="container mx-auto px-4">
+        <!-- 用户信息栏 -->
+        <div class="flex justify-between items-center mb-8">
+            <div class="flex items-center">
+                <img src="{{ user.avatar_url }}" alt="{{ user.name }}的头像" class="w-10 h-10 rounded-full mr-3 object-cover">
+                <span class="font-medium">{{ user.name }}</span>
+                {% if is_admin %}
+                <span class="ml-2 px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full">管理员</span>
+                {% endif %}
+            </div>
+            <a href="/logout" class="text-sm text-text-secondary hover:text-primary flex items items-center">
+                <i class="fa fa-sign-out mr-1"></i> 退出登录
+            </a>
+        </div>
+        
+        <!-- 页面标题 -->
+        <div class="mb-8 text-center">
+            <h1 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold text-text-primary mb-2">幸运九宫格抽奖</h1>
+            <p class="text-text-secondary">点赞用户可获得1次抽奖机会</p>
+        </div>
+        
+        <div class="flex flex-col lg:grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+            <!-- 左侧主内容：九宫格抽奖 -->
+            <div class="md:col-span-2">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 md:p-8">
+                    <!-- 抽奖信息栏 -->
+                    <div class="flex justify-between items-center mb-6">
+                        <div class="flex items-center bg-neutral:mb-4 bg-neutral rounded-lg px-4 py-2">
+                            <i class="fa fa-ticket text-primary mr-2"></i>
+                            <span class="text-text-secondary">剩余抽奖次数：</span>
+                            <span id="draw-count" class="font-semibold text-primary ml-1">{{ remaining_draws }}</span>
+                        </div>
+                    </div>
+                    
+                    <!-- 九宫格容器 -->
+                    <div class="max-w-md mx-auto mx-auto">
+                        <!-- 九宫格布局调整：共9个格子，中间是抽奖按钮 -->
+                        <div class="grid grid-cols-3 gap-3 md:gap-4">
+                            <!-- 第一行：3个奖品 -->
+                            <div class="prize-item aspect-square rounded-lg border border-gray-200 flex flex flex-col items-center justify-center p-0 card-hover relative overflow-hidden" data-index="0"></div>
+                            <div class="prize-item aspect-square-square aspect-square rounded-lg border border-gray-200 flex flex-col items-center justify-center p-0 card-hover relative overflow-hidden" data-index="1"></div>
+                            <div class="prize-item aspect-square rounded-lg border border border-gray-200 flex flex-col items-center justify-center p-0 card-hover relative overflow-hidden" data-index="2"></div>
+                            
+                            <!-- 第二行：左右是奖品，中间是抽奖按钮 -->
+                            <div class="prize-item aspect-square rounded-lg border border-gray-200 flex flex-col items-center-center justify-center p-0 card-hover relative overflow-hidden" data-index="3"></div>
+                            <div id="draw-btn" class="aspect-square rounded-lg bg-primary text-white flex flex-col items-center justify-center p-2 cursor-pointer pulse-btn hover:bg-primary/90 transition-colors">
+                                <div class="w-16 h-16 md:w-20 md:h-20 bg-white/10 rounded-full flex items-center justify-center">
+                                    <span class="font-medium text-base md:text-lg text-white">抽奖</span>
+                                </div>
+                            </div>
+                            <div class="prize-item aspect-square rounded rounded rounded-lg border border-gray-200 flex flex-col items-center justify-center p-0 card-hover relative overflow-hidden" data-index="4"></div>
+                            
+                            <!-- 第三行：3个奖品 -->
+                            <div class="prize-item aspect-square rounded-lg border border-gray-200 flex flex-col items-center justify-center justify-center p-0 card-hover relative overflow-hidden" data-index="5"></div>
+                            <div class="prize-item aspect-square rounded-lg border border-gray-200 flex flex-col items-center justify-center p-0 card-hover relative overflow-hidden" data-index="6"></div>
+                            <div class="prize-item aspect-square rounded-lg border border-gray-200 flex flex-col items-center justify-center p-0 card-hover relative overflow-hidden" data-index="7"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 右侧：个人中奖记录 -->
+            <div class="md:col-span-1">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 h-full">
+                    <h3 class="text-lg font-semibold mb-4 flex items-center">
+                        <i class="fa fa-star text-primary mr-2"></i>
+                        我的中奖记录
+                    </h3>
+                    
+                    <div id="my-wins" class="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+                        {% if not winning_records %}
+                        <div class="text-center text-text-secondary py-8 text-sm">
+                            您尚未中奖，试试手气吧！
+                        </div>
+                        {% else %}
+                            {% for record in winning_records %}
+                            <div class="flex items-center justify-between p-2 border border-gray-100 rounded-lg bg-white">
+                                <div class="flex items-center">
+                                    <i class="fa fa-gift text-primary mr-2"></i>
+                                    <span class="text-sm">{{ record.prize }}</span>
+                                </div>
+                                <span class="text-xs text-text-secondary">{{ record.draw_time }}</span>
+                            </div>
+                            {% endfor %}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <!-- 中奖弹窗和编辑弹窗保持不变 -->
+    <div id="result-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl p-6 md:p-8 max-w-md w-full mx-4 shadow-lg transform transition-all duration-300 scale-95 opacity-0" id="modal-content">
+            <div class="text-center">
+                <h3 id="result-title" class="text-xl md:text-2xl font-bold mb-2">恭喜您中奖了！</h3>
+                <p class="text-text-secondary mb-4">您抽到了：<span id="prize-name" class="text-primary font-bold text-lg">智能手机</span></p>
+                <p id="encouragement-text" class="text-text-secondary mb-6 hidden">继续加油，下次一定中大奖！</p>
+                
+                <button id="close-modal" class="w-full bg-primary text-white py-3 rounded-lg font-medium hover:bg-primary/90 transition-colors">
+                    确定
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="edit-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl p-6 md:p-8 max-w-md w-full mx-4 shadow-lg transform transition-all duration-300 scale-95 opacity-0" id="edit-modal-content">
+            <div class="text-center mb-6">
+                <h3 class="text-xl font-bold">编辑奖品</h3>
+            </div>
+            
+            <form id="edit-prize-form">
+                <input type="hidden" id="edit-prize-index" value="">
+                
+                <div class="mb-4">
+                    <label for="prize-name-input" class="block text-sm font-medium text-gray-700 mb-1">奖品名称</label>
+                    <input type="text" id="prize-name-input" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary-primary" placeholder="输入奖品名称">
+                </div>
+                
+                <div class="mb-4">
+                    <label for="prize-count" class="block text-sm font-medium text-gray-700 mb-1">奖品数量</label>
+                    <input type="number" id="prize-count" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary" min="0" placeholder="0表示不限数量">
+                </div>
+                
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">奖品图片</label>
+                    <div id="image-preview-container" class="mb-2 border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
+                        <img id="image-preview" src="" alt="奖品图片预览" class="max-w-full max-h-40 mx-auto hidden">
+                        <div id="no-image-placeholder" class="py-8">
+                            <i class="fa fa-picture-o text-gray-400 text-3xl mb-2"></i>
+                            <p class="text-gray-500 text-sm">未选择图片</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-2">
+                        <label class="flex-1 px-4 py-2 border border-gray-300 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 cursor cursor-pointer text-center">
+                            <i class="fa fa-upload mr-1"></i> 选择图片
+                            <input type="file" id="prize-image" accept="image/*" class="hidden">
+                        </label>
+                        <button type="button" id="remove-image" class="px-4 py-2 border border-gray-300 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            <i class="fa fa-trash mr-1"></i> 移除
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="flex gap-3">
+                    <button type="button" id="cancel-edit" class="flex-1 px-4 py-3 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors">
+                        取消
+                    </button>
+                    <button type="submit" class="flex-1 px-4 py-3 border border-transparent rounded-lg-lg shadow-sm font-medium text-white bg-primary hover:bg-primary/90 transition-colors">
+                        保存
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        // 全局变量 - 管理员标识从后端模板获取
+        const isAdmin = {{ is_admin | tojson }};
+        
+        // 未中奖时的祝福话语列表
+        const encouragementMessages = [
+            "别灰心，好运正在路上！",
+            "下次抽奖运气一定会更好！",
+            "再接再厉，大奖在等你！",
+            "保持微笑，幸运会降临的！",
+            "每一次尝试都是希望的开始！",
+            "运气守恒，下次一定中！",
+            "好事多磨，大奖在向你招手！"
+        ];
+        
+        // 全局奖品数据
+        let prizes = [];
+        // 抽奖次数（从后端获取）
+        let drawCount = parseInt(document.getElementById('draw-count').textContent);
+        // 是否正在抽奖
+        let isDrawing = false;
+        // 存储抽奖结果的变量
+        let drawResult = null;
+        // 抽奖API请求的Promise
+        let drawApiPromise = null;
+        
+        // DOM元素
+        const prizeItems = document.querySelectorAll('.prize-item');
+        const drawCountEl = document.getElementById('draw-count');
+        const resultModal = document.getElementById('result-modal');
+        const modalContent = document.getElementById('modal-content');
+        const closeModal = document.getElementById('close-modal');
+        const resultText = document.getElementById('prize-name'); // 修改ID对应
+        const resultTitle = document.getElementById('result-title'); // 标题元素
+        const resultIcon = document.getElementById('result-icon');
+        const encouragementText = document.getElementById('encouragement-text'); // 祝福文本
+        const myWinsContainer = document.getElementById('my-wins');
+        const editModal = document.getElementById('edit-modal');
+        const editModalContent = document.getElementById('edit-modal-content');
+        const editPrizeForm = document.getElementById('edit-prize-form');
+        const editPrizeIndex = document.getElementById('edit-prize-index');
+        const prizeNameInput = document.getElementById('prize-name-input'); // 修正ID冲突问题
+        const prizeCountInput = document.getElementById('prize-count');
+        const prizeImageInput = document.getElementById('prize-image');
+        const imagePreview = document.getElementById('image-preview');
+        const noImagePlaceholder = document.getElementById('no-image-placeholder');
+        const removeImageBtn = document.getElementById('remove-image');
+        const cancelEditBtn = document.getElementById('cancel-edit');
+        const drawBtn = document.getElementById('draw-btn');
+        
+        // 初始化：从服务器加载奖品配置
+        async function initPrizes() {
+            try {
+                const response = await fetch('/api/get-prizes');
+                const data = await response.json();
+                
+                if (data.success) {
+                    prizes = data.prizes;
+                    renderPrizesGrid();
+                } else {
+                    console.error('加载奖品配置失败');
+                    // 使用默认奖品配置
+                    prizes = [
+                        {"name": "一等奖: iPhone", "count": 1, "icon": "fa-mobile", "image": ""},
+                        {"name": "二等奖: 耳机", "count": 3, "icon": "fa-headphones", "image": ""},
+                        {"name": "三等奖: 充电宝", "count": 5, "icon": "fa-battery-full", "image": ""},
+                        {"name": "四等奖: 水杯", "count": 10, "icon": "fa-coffee", "image": ""},
+                        {"name": "五等奖: 笔记本", "count": 20, "icon": "fa-book", "image": ""},
+                        {"name": "六等奖: 钥匙扣", "count": 30, "icon": "fa-key", "image": ""},
+                        {"name": "七等奖: 优惠券", "count": 50, "icon": "fa-ticket", "image": ""},
+                        {"name": "谢谢参与", "count": -1, "icon": "fa-meh-o", "image": ""}
+                    ];
+                    renderPrizesGrid();
+                }
+            } catch (error) {
+                console.error('获取奖品配置出错:', error);
+            }
+        }
+        
+        // 渲染奖品九宫格
+        function renderPrizesGrid() {
+            // 为每个奖品格子填充内容
+            prizeItems.forEach((item, index) => {
+                // 确保索引有效
+                if (index >= prizes.length) return;
+                
+                const prize = prizes[index];
+                // 更准确地判断是否为空奖品
+                const isEmptyPrize = prize.name.trim() === "感谢您的参与" || prize.name.trim() === "谢谢参与";
+                
+                // 清除之前的类
+                item.classList.remove('prize-disabled');
+                
+                // 奖品内容
+                let content = '';
+                
+                // 只有非空白奖品才显示数量
+                let countDisplay = '';
+                let badgeClass = 'prize-count-badge';
+                
+                if (!isEmptyPrize) {
+                    // 修复数量显示逻辑：0显示"已抽完"，1以上显示"剩余: X"，-1表示不限
+                    let countText;
+                    if (prize.count === 0) {
+                        countText = "已抽完";
+                        badgeClass += ' prize-exhausted'; // 添加已抽完样式
+                        item.classList.add('prize-disabled'); // 添加禁用样式
+                    } else if (prize.count === -1) {
+                        countText = "不限";
+                    } else {
+                        countText = `剩余: ${prize.count}`;
+                    }
+                    countDisplay = `<div class="${badgeClass}">${countText}</div>`;
+                }
+                
+                if (prize.image) {
+                    // 图片占满整个格子的布局 - 使用最新的prize.name
+                    content += `<div class="prize-image-container">
+                                <img src="${prize.image}" alt="${prize.name}" class="prize-full-image">
+                                <div class="prize-text-overlay">${prize.name}</div>
+                                ${countDisplay}
+                              </div>`;
+                } else {
+                    // 没有图片时的默认布局
+                    content += `<div class="w-full h-full flex flex-col items-center justify-center p-2">
+                                <div class="w-12 h-12 md:w-16 md:h-16 bg-primary/10 rounded-full flex items-center justify-center mb-2">
+                                    <i class="fa ${prize.icon || 'fa-gift'} text-primary text-xl"></i>
+                                </div>
+                                <span class="text-sm md:text-base font-medium">${prize.name}</span>
+                                ${!isEmptyPrize ? `<span class="text-xs text-text-secondary mt-1">
+                                    ${prize.count === 0 ? '已抽完' : prize.count === -1 ? '不限' : '剩余: ' + prize.count}
+                                </span>` : ''}
+                              </div>`;
+                }
+                
+                // 操作按钮（仅管理员可见）
+                if (isAdmin) {
+                    content += `<div class="prize-actions absolute top-1 right-1 flex gap-1 z-10">
+                                <button class="edit-prize p-1 bg-white rounded-full shadow-sm text-gray-600 hover:text-primary" data-index="${index}">
+                                    <i class="fa fa-pencil"></i>
+                                </button>
+                                <button class="delete-prize p-1 bg-white rounded-full shadow-sm text-gray-600 hover:text-red-500" data-index="${index}">
+                                    <i class="fa fa-trash"></i>
+                                </button>
+                              </div>`;
+                }
+                          
+                item.innerHTML = content;
+            });
+            
+            // 绑定事件
+            bindPrizeEvents();
+            drawBtn.addEventListener('click', startDraw);
+        }
+        
+        // 绑定奖品操作事件
+        function bindPrizeEvents() {
+            // 只有管理员才绑定编辑和删除事件
+            if (isAdmin) {
+                // 编辑奖品
+                document.querySelectorAll('.edit-prize').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const index = parseInt(btn.getAttribute('data-index'));
+                        openEditModal(index);
+                    });
+                });
+                
+                // 删除奖品
+                document.querySelectorAll('.delete-prize').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const index = parseInt(btn.getAttribute('data-index'));
+                        if (confirm(`确定要删除"${prizes[index].name}"吗？`)) {
+                            deletePrize(index);
+                        }
+                    });
+                });
+            }
+        }
+        
+        // 打开编辑模态框
+        function openEditModal(index) {
+            // 确保索引有效
+            if (index >= prizes.length) return;
+            
+            const prize = prizes[index];
+            editPrizeIndex.value = index;
+            prizeNameInput.value = prize.name;
+            
+            // 处理数量显示：将-1转换为0显示，但实际保存为-1表示不限
+            prizeCountInput.value = prize.count === -1 ? 0 : prize.count || 0;
+            
+            // 处理图片预览
+            if (prize.image) {
+                imagePreview.src = prize.image;
+                imagePreview.classList.remove('hidden');
+                noImagePlaceholder.classList.add('hidden');
+                removeImageBtn.disabled = false;
+            } else {
+                imagePreview.src = '';
+                imagePreview.classList.add('hidden');
+                noImagePlaceholder.classList.remove('hidden');
+                removeImageBtn.disabled = true;
+            }
+            
+            // 显示模态框
+            editModal.classList.remove('hidden');
+            setTimeout(() => {
+                editModalContent.classList.remove('scale-95', 'opacity-0');
+                editModalContent.classList.add('scale-100', 'opacity-100');
+            }, 10);
+        }
+        
+        // 保存奖品编辑
+        async function savePrizeEdit(e) {
+            e.preventDefault();
+            
+            const index = parseInt(editPrizeIndex.value);
+            // 确保索引有效
+            if (isNaN(index) || index < 0 || index >= prizes.length) {
+                alert('无效的奖品索引');
+                return;
+            }
+            
+            const countValue = parseInt(prizeCountInput.value) || 0;
+            
+            // 保存逻辑：输入0表示不限，实际存储为-1
+            const actualCount = countValue === 0 ? -1 : countValue;
+            
+            const updatedPrize = {
+                name: prizeNameInput.value.trim() || "感谢您的参与",
+                count: actualCount,
+                icon: prizes[index].icon || "fa-gift",
+                image: imagePreview.src || ""
+            };
+            
+            // 更新奖品数据
+            prizes[index] = updatedPrize;
+            
+            // 保存到服务器
+            try {
+                const response = await fetch('/api/save-prizes', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(prizes)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // 重新渲染，确保显示最新数据
+                    renderPrizesGrid();
+                    closeEditModal();
+                } else {
+                    alert('保存失败，请重试：' + (result.message || ''));
+                }
+            } catch (error) {
+                console.error('保存奖品配置失败:', error);
+                alert('保存失败，请重试');
+            }
+        }
+        
+        // 关闭编辑模态框
+        function closeEditModal() {
+            editModalContent.classList.remove('scale-100', 'opacity-100');
+            editModalContent.classList.add('scale-95', 'opacity-0');
+            
+            setTimeout(() => {
+                editModal.classList.add('hidden');
+                // 重置表单
+                editPrizeForm.reset();
+                imagePreview.src = '';
+                imagePreview.classList.add('hidden');
+                noImagePlaceholder.classList.remove('hidden');
+                removeImageBtn.disabled = true;
+            }, 300);
+        }
+        
+        async function deletePrize(index) {
+            // 确保索引有效
+            if (index < 0 || index >= prizes.length) return;
+            
+            // 重置为默认状态
+            prizes[index] = {
+                name: "谢谢参与",
+                count: -1,
+                icon: "fa-meh-o",
+                image: ""
+            };
+            
+            // 保存到服务器
+            try {
+                const response = await fetch('/api/save-prizes', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(prizes)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // 重新渲染
+                    renderPrizesGrid();
+                } else {
+                    alert('删除失败，请重试：' + (result.message || ''));
+                }
+            } catch (error) {
+                console.error('删除奖品失败:', error);
+                alert('删除失败，请重试');
+            }
+        }
+        
+        function handleImageUpload(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    imagePreview.src = event.target.result;
+                    imagePreview.classList.remove('hidden');
+                    noImagePlaceholder.classList.add('hidden');
+                    removeImageBtn.disabled = false;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        function removeImage() {
+            imagePreview.src = '';
+            imagePreview.classList.add('hidden');
+            noImagePlaceholder.classList.remove('hidden');
+            removeImageBtn.disabled = true;
+            prizeImageInput.value = '';
+        }
+        
+        // 发起抽奖API请求
+        async function fetchDrawResult() {
+            try {
+                const response = await fetch('/api/draw', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+                
+                const result = await response.json();
+                return result;
+            } catch (error) {
+                console.error('抽奖请求失败:', error);
+                return {
+                    success: false,
+                    message: '网络错误，请重试'
+                };
+            }
+        }
+        
+        async function startDraw() {
+            if (isDrawing) return;
+            
+            if (drawCount <= 0) {
+                alert('您的抽奖次数已用完');
+                return;
+            }
+            
+            // 检查是否有可用奖品
+            const hasValidPrizes = prizes.some(prize => 
+                prize.count > 0 && !["感谢您的参与", "未中奖", "谢谢参与"].includes(prize.name)
+            );
+            
+            if (!hasValidPrizes) {
+                alert('所有奖品已抽完，无法继续抽奖');
+                return;
+            }
+            
+            // 禁用按钮
+            drawBtn.style.pointerEvents = 'none';
+            isDrawing = true;
+            drawResult = null;
+            
+            // 立即开始动画，使用临时目标位置
+            const tempTargetIndex = Math.floor(Math.random() * prizeItems.length);
+            
+            // 并行发起API请求获取抽奖结果
+            drawApiPromise = fetchDrawResult();
+            
+            try {
+                // 先执行动画，使用临时目标
+                await startDrawAnimation(prizeItems, tempTargetIndex, true);
+                
+                // 等待API结果返回
+                const result = await drawApiPromise;
+                
+                if (result.success) {
+                    // 找到中奖奖品的索引
+                    let winningIndex = result.prize_index;
+                    
+                    // 如果API返回的索引无效，尝试查找
+                    if (winningIndex === undefined || winningIndex === null || winningIndex >= prizeItems.length) {
+                        winningIndex = prizes.findIndex(p => p.name === result.prize.name);
+                    }
+                    
+                    // 如果仍然没找到，使用随机位置
+                    if (winningIndex === -1 || winningIndex >= prizeItems.length) {
+                        winningIndex = Math.floor(Math.random() * prizeItems.length);
+                    }
+                    
+                    // 执行一个短动画，精确定位到中奖位置
+                    await startDrawAnimation(prizeItems, winningIndex, false);
+                    
+                    // 更新剩余抽奖次数
+                    drawCount = result.remaining_draws;
+                    drawCountEl.textContent = drawCount;
+                    
+                    // 更新奖品列表
+                    if (result.updated_prizes) {
+                        prizes = result.updated_prizes;
+                        renderPrizesGrid();
+                    }
+                    
+                    // 显示中奖结果
+                    showResult(result.prize);
+                } else {
+                    alert(result.message || '抽奖失败，请重试');
+                }
+            } catch (error) {
+                console.error('抽奖过程中发生错误:', error);
+                alert('抽奖过程中发生错误，请重试');
+            } finally {
+                // 恢复按钮状态
+                drawBtn.style.pointerEvents = 'auto';
+                isDrawing = false;
+                drawApiPromise = null;
+            }
+        }
+        
+        function startDrawAnimation(prizeItems, targetIndex, isTemp) {
+            return new Promise((resolve) => {
+                let currentIndex = 0;
+                // 根据是否是临时动画调整速度和步数
+                let speed = isTemp ? 80 : 150;
+                let totalSteps = isTemp ? 40 : 10;
+                let step = 0;
+                
+                const interval = setInterval(() => {
+                    // 重置所有奖品样式
+                    prizeItems.forEach(item => item.classList.remove('prize-active'));
+                    
+                    // 高亮当前奖品
+                    if (currentIndex < prizeItems.length) {
+                        prizeItems[currentIndex].classList.add('prize-active');
+                    }
+                    
+                    // 移动到下一个奖品
+                    currentIndex = (currentIndex + 1) % prizeItems.length;
+                    step++;
+                    
+                    // 逐渐减速
+                    if (step > totalSteps * 0.6) {
+                        speed = isTemp ? 150 : 250;
+                    }
+                    if (step > totalSteps * 0.8) {
+                        speed = isTemp ? 300 : 400;
+                    }
+                    
+                    // 接近结束时，确保最终停在目标位置
+                    if (step >= totalSteps) {
+                        // 计算还需要多少步才能到达目标位置
+                        const remainingSteps = (targetIndex - currentIndex + prizeItems.length) % prizeItems.length;
+                        
+                        // 如果已经到达目标位置或完成了额外步骤，则结束动画
+                        if (currentIndex === targetIndex || step >= totalSteps + remainingSteps) {
+                            clearInterval(interval);
+                            // 确保最终高亮显示目标奖品
+                            prizeItems.forEach(item => item.classList.remove('prize-active'));
+                            prizeItems[targetIndex].classList.add('prize-active');
+                            resolve();
+                        }
+                    }
+                }, speed);
+            });
+        }
+        
+        function showResult(prize) {
+            // 判断是否中奖
+            const isWinning = !["感谢您的参与", "未中奖", "谢谢参与"].includes(prize.name);
+            
+            // 设置弹窗内容
+            resultText.textContent = prize.name;
+            
+            // 设置标题和祝福话语
+            if (isWinning) {
+                resultTitle.textContent = "恭喜您中奖了！";
+                encouragementText.classList.add('hidden');
+            } else {
+                resultTitle.textContent = "很遗憾未中奖";
+                // 随机选择一条祝福话语
+                const randomMessage = encouragementMessages[Math.floor(Math.random() * encouragementMessages.length)];
+                encouragementText.textContent = randomMessage;
+                encouragementText.classList.remove('hidden');
+            }
+            
+            // 显示弹窗并添加动画
+            resultModal.classList.remove('hidden');
+            setTimeout(() => {
+                modalContent.classList.remove('scale-95', 'opacity-0');
+                modalContent.classList.add('scale-100', 'opacity-100');
+            }, 10);
+            
+            // 添加到我的中奖记录
+            addToMyWins(prize);
+        }
+        
+        function addToMyWins(prize) {
+            // 如果是第一条记录，清除"尚未中奖"提示
+            if (myWinsContainer.querySelector('.text-center')) {
+                myWinsContainer.innerHTML = '';
+            }
+            
+            const now = new Date();
+            const timeStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+            
+            const newWin = document.createElement('div');
+            newWin.className = 'flex items-center justify-between p-2 border border-gray-100 rounded-lg bg-white transform translate-y-2 opacity-0';
+            newWin.innerHTML = `
+                <div class="flex items-center">
+                    <i class="fa fa-gift text-primary mr-2"></i>
+                    <span class="text-sm">${prize.name}</span>
+                </div>
+                <span class="text-xs text-text-secondary">${timeStr}</span>
+            `;
+            
+            myWinsContainer.prepend(newWin);
+            
+            // 添加动画
+            setTimeout(() => {
+                newWin.classList.remove('translate-y-2', 'opacity-0');
+                newWin.classList.add('transition-all', 'duration-300', 'translate-y-0', 'opacity-100');
+            }, 10);
+        }
+        
+        function closeResultModal() {
+            modalContent.classList.remove('scale-100', 'opacity-100');
+            modalContent.classList.add('scale-95', 'opacity-0');
+            
+            setTimeout(() => {
+                resultModal.classList.add('hidden');
+                // 重置奖品样式
+                prizeItems.forEach(item => {
+                    item.classList.remove('prize-active');
+                });
+            }, 300);
+        }
+        
+        // 事件监听
+        document.addEventListener('DOMContentLoaded', initPrizes);
+        closeModal.addEventListener('click', closeResultModal);
+        resultModal.addEventListener('click', (e) => {
+            if (e.target === resultModal) {
+                closeResultModal();
+            }
+        });
+        editPrizeForm.addEventListener('submit', savePrizeEdit);
+        cancelEditBtn.addEventListener('click', closeEditModal);
+        editModal.addEventListener('click', (e) => {
+            if (e.target === editModal) {
+                closeEditModal();
+            }
+        });
+        prizeImageInput.addEventListener('change', handleImageUpload);
+        removeImageBtn.addEventListener('click', removeImage);
+    </script>
+</body>
+</html>
